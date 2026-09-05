@@ -1,0 +1,147 @@
+// VeilClaim — private provider-attested claim -> Midnight proof -> replay-safe public receipt.
+//
+// Proof statement (see doc.md §10):
+//   I know a claim credential authenticated by a provider recognized by the contract.
+//   The hidden category, service date, and amount satisfy the referenced policy.
+//   I know the holder binding required to exercise this claim.
+//   The action-scoped claim nullifier is unused. Consume it and record one accepted claim.
+
+pragma language_version >= 0.23;
+
+import CompactStandardLibrary;
+
+// ───────────────────────────── Public types ─────────────────────────────
+
+export struct Policy {
+  active: Boolean,
+  validFromEpoch: Uint<32>,
+  validUntilEpoch: Uint<32>,
+  coveredCategory: Uint<16>,
+  maxAmount: Uint<64>
+}
+
+export struct Provider {
+  // Jubjub public key the provider signs claim credentials with.
+  attestationKey: JubjubPoint,
+  approved: Boolean
+}
+
+// Deliberately minimal: no amount, date, category, provider, or holder data.
+export struct ClaimReceipt {
+  policyId: Bytes<32>,
+  claimNullifier: Bytes<32>
+}
+
+// ───────────────────────────── Private types ────────────────────────────
+// Only ever supplied through witnesses. Never written to the ledger.
+
+export struct ClaimCredential {
+  // H(DOMAIN_HOLDER, holderSecret). The provider signs this, never the secret itself.
+  holderCommitment: Bytes<32>,
+  providerId: Bytes<32>,
+  categoryCode: Uint<16>,
+  serviceEpoch: Uint<32>,
+  billedAmount: Uint<64>,
+  claimNonce: Bytes<32>
+}
+
+// Schnorr signature over Jubjub by the provider's attestationKey.
+export struct ProviderAttestation {
+  r: JubjubPoint,
+  s: Field
+}
+
+// ───────────────────────────── Public ledger ────────────────────────────
+
+export ledger adminCommitment: Bytes<32>;
+export ledger policies: Map<Bytes<32>, Policy>;
+export ledger providers: Map<Bytes<32>, Provider>;
+export ledger consumedClaimNullifiers: Set<Bytes<32>>;
+export ledger claimReceipts: Map<Uint<64>, ClaimReceipt>;
+export ledger acceptedClaimCount: Counter;
+
+// ───────────────────────────── Witnesses ────────────────────────────────
+
+witness adminSecret(): Bytes<32>;
+witness holderSecret(): Bytes<32>;
+witness claimCredential(): ClaimCredential;
+witness providerAttestation(): ProviderAttestation;
+
+// ───────────────────────────── Constructor ──────────────────────────────
+
+constructor(initialAdminCommitment: Bytes<32>) {
+  adminCommitment = disclose(initialAdminCommitment);
+}
+
+// ───────────────────────────── Pure helpers ─────────────────────────────
+// Exported so TypeScript derives byte-identical values via pureCircuits.
+
+export circuit deriveAdminCommitment(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilclaim:admin:v1"), secret]);
+}
+
+export circuit deriveHolderCommitment(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilclaim:holder:v1"), secret]);
+}
+
+// Authorization is proof of knowledge of the admin secret, not ownPublicKey() (doc.md §12).
+circuit assertAdmin(): [] {
+  assert(deriveAdminCommitment(adminSecret()) == adminCommitment, "VeilClaim: not admin");
+}
+
+// ───────────────────────────── Circuits ─────────────────────────────────
+
+export circuit createPolicy(
+  policyId: Bytes<32>,
+  validFromEpoch: Uint<32>,
+  validUntilEpoch: Uint<32>,
+  coveredCategory: Uint<16>,
+  maxAmount: Uint<64>
+): [] {
+  assertAdmin();
+
+  const id = disclose(policyId);
+  const fromEpoch = disclose(validFromEpoch);
+  const untilEpoch = disclose(validUntilEpoch);
+  const cap = disclose(maxAmount);
+
+  assert(!policies.member(id), "VeilClaim: policy exists");
+  assert(fromEpoch <= untilEpoch, "VeilClaim: invalid policy interval");
+  assert(cap > 0, "VeilClaim: invalid cap");
+
+  policies.insert(id, Policy {
+    active: true,
+    validFromEpoch: fromEpoch,
+    validUntilEpoch: untilEpoch,
+    coveredCategory: disclose(coveredCategory),
+    maxAmount: cap
+  });
+}
+
+export circuit setProviderStatus(
+  providerId: Bytes<32>,
+  attestationKey: JubjubPoint,
+  approved: Boolean
+): [] {
+  assertAdmin();
+  providers.insert(disclose(providerId), Provider {
+    attestationKey: disclose(attestationKey),
+    approved: disclose(approved)
+  });
+}
+
+// TODO(hours 2-14): implement the core path from doc.md §12. Fails closed until then.
+//   load policy, assert active
+//   verify provider approved
+//   verify provider attestation (Schnorr over credential hash)
+//   verify holder binding: deriveHolderCommitment(holderSecret()) == credential.holderCommitment
+//   assert category == policy.coveredCategory
+//   assert validFromEpoch <= serviceEpoch <= validUntilEpoch
+//   assert billedAmount <= policy.maxAmount
+//   claimBinding   = H(providerId, policyId, claimNonce, credentialCommitment)
+//   claimNullifier = H(DOMAIN_CLAIM_V1, kernel.self(), policyId, claimBinding)
+//   assert unused; insert nullifier; insert receipt; increment count
+export circuit submitClaim(policyId: Bytes<32>): [] {
+  assert(policies.member(disclose(policyId)), "VeilClaim: unknown policy");
+  assert(false, "VeilClaim: submitClaim not implemented");
+}
