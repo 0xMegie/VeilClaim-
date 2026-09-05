@@ -1,0 +1,22 @@
+# Private build brief
+doc.md
+
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+coverage/
+reports/
+.vite/
+.env
+.env.local
+.DS_Store
+.idea/
+midnight-level-db
+
+# Compact compiler output (regenerate with `npm run compact`)
+contract/src/managed/
+
+# Dev-time copies of circuit assets
+ui/public/keys/
+ui/public/zkir/

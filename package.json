@@ -1,0 +1,28 @@
+{
+  "name": "veilclaim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "contract",
+    "api",
+    "ui"
+  ],
+  "scripts": {
+    "compact": "bun run --filter @veilclaim/contract compact",
+    "compact:fast": "bun run --filter @veilclaim/contract compact:fast",
+    "test": "bun run --filter @veilclaim/contract test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "dev": "bun run --filter @veilclaim/ui dev",
+    "build": "bun run --filter @veilclaim/ui build",
+    "proof-server": "docker compose -f proof-server/docker-compose.yml up"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "overrides": {
+    "smoldot": "npm:@aspect-build/empty@0.0.0"
+  }
+}
