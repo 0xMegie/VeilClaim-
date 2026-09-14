@@ -19,6 +19,25 @@ export const emptyPrivateState = (): VeilClaimPrivateState => ({
   attestation: null,
 });
 
+/** Everything a claimant holds for one claim: their secret plus the provider-signed credential. */
+export interface PrivateClaim {
+  readonly holderSecret: Uint8Array;
+  readonly credential: ClaimCredential;
+  readonly attestation: ProviderAttestation;
+}
+
+export const adminPrivateState = (adminSecret: Uint8Array): VeilClaimPrivateState => ({
+  ...emptyPrivateState(),
+  adminSecret,
+});
+
+export const claimantPrivateState = (claim: PrivateClaim): VeilClaimPrivateState => ({
+  ...emptyPrivateState(),
+  holderSecret: claim.holderSecret,
+  credential: claim.credential,
+  attestation: claim.attestation,
+});
+
 type Ctx = WitnessContext<Ledger, VeilClaimPrivateState>;
 
 const required = <T>(value: T | null, name: string): T => {

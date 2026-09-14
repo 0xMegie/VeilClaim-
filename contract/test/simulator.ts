@@ -11,6 +11,7 @@ import { type VeilClaimPrivateState, emptyPrivateState, witnesses } from '../src
 /**
  * Runs the real compiled VeilClaim circuits in-process (no proof server).
  * Every test exercises the generated contract code, never a TypeScript re-implementation.
+ * A circuit that fails an assertion throws before its context is kept, like a rejected transaction.
  */
 export class VeilClaimSimulator {
   readonly contract = new Contract<VeilClaimPrivateState>(witnesses);
@@ -60,3 +61,15 @@ export const bytes32 = (label: string): Uint8Array => {
   out.set(new TextEncoder().encode(label).slice(0, 32));
   return out;
 };
+
+const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString('hex');
+
+/** A plain, comparable copy of the entire public ledger. */
+export const snapshot = (l: Ledger) => ({
+  adminCommitment: hex(l.adminCommitment),
+  policies: [...l.policies].map(([id, p]) => [hex(id), p]),
+  providers: [...l.providers].map(([id, p]) => [hex(id), p]),
+  consumedClaimNullifiers: [...l.consumedClaimNullifiers].map(hex).sort(),
+  claimReceipts: [...l.claimReceipts].map(([i, r]) => [i, hex(r.policyId), hex(r.claimNullifier)]),
+  acceptedClaimCount: l.acceptedClaimCount,
+});

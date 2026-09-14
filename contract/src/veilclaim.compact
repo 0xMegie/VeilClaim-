@@ -1,6 +1,6 @@
 // VeilClaim — private provider-attested claim -> Midnight proof -> replay-safe public receipt.
 //
-// Proof statement (see doc.md §10):
+// Proof statement:
 //   I know a claim credential authenticated by a provider recognized by the contract.
 //   The hidden category, service date, and amount satisfy the referenced policy.
 //   I know the holder binding required to exercise this claim.
@@ -39,13 +39,16 @@ export struct ClaimCredential {
   // H(DOMAIN_HOLDER, holderSecret). The provider signs this, never the secret itself.
   holderCommitment: Bytes<32>,
   providerId: Bytes<32>,
+  // The provider attests which policy the claim is for, so one claim cannot be consumed under two policies.
+  policyId: Bytes<32>,
   categoryCode: Uint<16>,
   serviceEpoch: Uint<32>,
   billedAmount: Uint<64>,
   claimNonce: Bytes<32>
 }
 
-// Schnorr signature over Jubjub by the provider's attestationKey.
+// Schnorr signature over Jubjub by the provider's attestationKey:
+//   s·G == r + e·attestationKey,  e = attestationChallenge(r, attestationKey, credentialCommitment)
 export struct ProviderAttestation {
   r: JubjubPoint,
   s: Field
@@ -84,7 +87,51 @@ export circuit deriveHolderCommitment(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilclaim:holder:v1"), secret]);
 }
 
-// Authorization is proof of knowledge of the admin secret, not ownPublicKey() (doc.md §12).
+export circuit deriveCredentialCommitment(credential: ClaimCredential): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "veilclaim:credential:v1"),
+    persistentHash<ClaimCredential>(credential)
+  ]);
+}
+
+// Scalars must be below the Jubjub subgroup order (~2^252) or ecMul rejects them. Keeping 31 bytes of the digest
+// gives a 248-bit challenge that always fits, so a forged attestation fails the equation instead of the decoder.
+export circuit attestationChallenge(r: JubjubPoint, attestationKey: JubjubPoint, credentialCommitment: Bytes<32>): Field {
+  const digest = persistentHash<Vector<6, Field>>([
+    degradeToTransient(pad(32, "veilclaim:attestation:v1")),
+    jubjubPointX(r),
+    jubjubPointY(r),
+    jubjubPointX(attestationKey),
+    jubjubPointY(attestationKey),
+    degradeToTransient(credentialCommitment)
+  ]);
+  return slice<31>(digest, 0) as Field;
+}
+
+circuit attestationValid(attestationKey: JubjubPoint, credentialCommitment: Bytes<32>, attestation: ProviderAttestation): Boolean {
+  const e = attestationChallenge(attestation.r, attestationKey, credentialCommitment);
+  return ecMulGenerator(attestation.s) == ecAdd(attestation.r, ecMul(attestationKey, e));
+}
+
+// Deterministic per underlying claim: a new session, proof, or re-signed attestation maps to the same value.
+// Mixing in the holder secret stops the provider, who knows every credential, from recognizing receipts on-chain.
+circuit deriveClaimNullifier(credential: ClaimCredential, credentialCommitment: Bytes<32>, secret: Bytes<32>): Bytes<32> {
+  const claimBinding = persistentHash<Vector<4, Bytes<32>>>([
+    credential.providerId,
+    credential.policyId,
+    credential.claimNonce,
+    credentialCommitment
+  ]);
+  return persistentHash<Vector<5, Bytes<32>>>([
+    pad(32, "veilclaim:claim:v1"),
+    kernel.self().bytes,
+    credential.policyId,
+    claimBinding,
+    secret
+  ]);
+}
+
+// Authorization is proof of knowledge of the admin secret, not ownPublicKey().
 circuit assertAdmin(): [] {
   assert(deriveAdminCommitment(adminSecret()) == adminCommitment, "VeilClaim: not admin");
 }
@@ -130,18 +177,41 @@ export circuit setProviderStatus(
   });
 }
 
-// TODO(hours 2-14): implement the core path from doc.md §12. Fails closed until then.
-//   load policy, assert active
-//   verify provider approved
-//   verify provider attestation (Schnorr over credential hash)
-//   verify holder binding: deriveHolderCommitment(holderSecret()) == credential.holderCommitment
-//   assert category == policy.coveredCategory
-//   assert validFromEpoch <= serviceEpoch <= validUntilEpoch
-//   assert billedAmount <= policy.maxAmount
-//   claimBinding   = H(providerId, policyId, claimNonce, credentialCommitment)
-//   claimNullifier = H(DOMAIN_CLAIM_V1, kernel.self(), policyId, claimBinding)
-//   assert unused; insert nullifier; insert receipt; increment count
+// Every check discloses only its boolean outcome, never the private values compared.
+// All writes happen after every check, in one transaction: nullifier, receipt, and count land together or not at all.
 export circuit submitClaim(policyId: Bytes<32>): [] {
-  assert(policies.member(disclose(policyId)), "VeilClaim: unknown policy");
-  assert(false, "VeilClaim: submitClaim not implemented");
+  const id = disclose(policyId);
+  assert(policies.member(id), "VeilClaim: unknown policy");
+  const policy = policies.lookup(id);
+  assert(policy.active, "VeilClaim: policy inactive");
+
+  const credential = claimCredential();
+  const secret = holderSecret();
+  const attestation = providerAttestation();
+
+  assert(disclose(credential.policyId == id), "VeilClaim: credential is for another policy");
+
+  // The provider id is disclosed to look up its key: which approved provider attested is visible on-chain.
+  const providerId = disclose(credential.providerId);
+  assert(providers.member(providerId), "VeilClaim: unknown provider");
+  const provider = providers.lookup(providerId);
+  assert(provider.approved, "VeilClaim: provider not approved");
+
+  const credentialCommitment = deriveCredentialCommitment(credential);
+  assert(disclose(attestationValid(provider.attestationKey, credentialCommitment, attestation)),
+    "VeilClaim: invalid provider attestation");
+  assert(disclose(deriveHolderCommitment(secret) == credential.holderCommitment), "VeilClaim: holder binding failed");
+
+  assert(disclose(credential.categoryCode == policy.coveredCategory), "VeilClaim: category not covered");
+  assert(disclose(credential.serviceEpoch >= policy.validFromEpoch), "VeilClaim: service date outside policy window");
+  assert(disclose(credential.serviceEpoch <= policy.validUntilEpoch), "VeilClaim: service date outside policy window");
+  assert(disclose(credential.billedAmount <= policy.maxAmount), "VeilClaim: amount exceeds policy cap");
+
+  const claimNullifier = disclose(deriveClaimNullifier(credential, credentialCommitment, secret));
+  assert(!consumedClaimNullifiers.member(claimNullifier), "VeilClaim: claim already consumed");
+
+  const receiptIndex = acceptedClaimCount.read();
+  consumedClaimNullifiers.insert(claimNullifier);
+  claimReceipts.insert(receiptIndex, ClaimReceipt { policyId: id, claimNullifier: claimNullifier });
+  acceptedClaimCount.increment(1);
 }
