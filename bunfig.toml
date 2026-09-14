@@ -1,0 +1,4 @@
+[install]
+# Flat node_modules like npm. Vite's dependency pre-bundling must resolve Midnight's WASM
+# packages (onchain-runtime-v3, ledger-v8) from the app, which bun's isolated layout prevents.
+linker = "hoisted"

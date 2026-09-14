@@ -41,8 +41,10 @@ const connectWallet = async (networkId: NetworkId): Promise<ConnectedAPI> => {
   return wallet.connect(networkId);
 };
 
+export const NETWORK_ID: NetworkId = (import.meta.env.VITE_NETWORK_ID as NetworkId | undefined) ?? 'preprod';
+
 export const initializeProviders = async (): Promise<VeilClaimProviders> => {
-  const networkId = import.meta.env.VITE_NETWORK_ID as NetworkId;
+  const networkId = NETWORK_ID;
   setNetworkId(networkId);
 
   const wallet = await connectWallet(networkId);
@@ -55,7 +57,9 @@ export const initializeProviders = async (): Promise<VeilClaimProviders> => {
     privateStateProvider: inMemoryPrivateStateProvider<VeilClaimPrivateStateId, VeilClaimPrivateState>(),
     zkConfigProvider,
     proofProvider: httpClientProofProvider(config.proverServerUri, zkConfigProvider),
-    publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri),
+    // Pass the browser WebSocket explicitly: isomorphic-ws's browser build has no named export,
+    // so the provider's default would be undefined and ledger subscriptions would never connect.
+    publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri, WebSocket),
     walletProvider: {
       getCoinPublicKey: () => addresses.shieldedCoinPublicKey,
       getEncryptionPublicKey: () => addresses.shieldedEncryptionPublicKey,

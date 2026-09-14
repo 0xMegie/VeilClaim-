@@ -46,3 +46,69 @@ button[aria-pressed='true'] {
 .checks {
   padding-left: 1.25rem;
 }
+
+/* Dev-only setup panel */
+.dev {
+  display: grid;
+  gap: 1rem;
+}
+
+.dev h2 {
+  margin: 0;
+}
+
+.hint {
+  margin: 0.25rem 0 0;
+  color: #5c5c6a;
+  font-size: 0.875rem;
+}
+
+.dev-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dev-join {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.5rem;
+}
+
+.dev-join label {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+}
+
+.dev-join input {
+  font-family: ui-monospace, monospace;
+  min-width: 0;
+}
+
+.dev-ledger {
+  margin: 0;
+}
+
+.dev-log {
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem;
+  max-height: 16rem;
+  overflow: auto;
+  background: #f6f6f8;
+  border-radius: 0.5rem;
+  font: 0.8125rem/1.5 ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+.dev-log time {
+  color: #5c5c6a;
+}
+
+.dev-log-ok {
+  color: #1f6b43;
+}
+
+.dev-log-error {
+  color: #a3261b;
+}

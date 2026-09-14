@@ -14,6 +14,8 @@ import {
 } from './common-types.js';
 
 export * from './common-types.js';
+export * from './demo.js';
+export * from './encoding.js';
 
 export const toPublicState = (l: VeilClaim.Ledger): VeilClaimPublicState => ({
   policies: [...l.policies].map(([id, policy]) => ({ policyId: toHex(id), ...policy })),
