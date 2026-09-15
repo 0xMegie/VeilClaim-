@@ -94,6 +94,11 @@ export class VeilClaimAPI {
     return publicReceipt(result);
   }
 
+  async deactivatePolicy(adminSecret: Uint8Array, policyId: Uint8Array): Promise<TxReceipt> {
+    await this.usePrivateState(adminPrivateState(adminSecret));
+    return publicReceipt(await this.deployedContract.callTx.deactivatePolicy(policyId));
+  }
+
   async setProviderStatus(
     adminSecret: Uint8Array,
     providerId: Uint8Array,

@@ -52,6 +52,30 @@ describe('policy', () => {
     expectRejected(sim, () => sim.createPolicy(POLICY, 0n, 999n, TERMS.category, 9_999_999n), 'VeilClaim: policy exists');
   });
 
+  it('admin deactivates a policy, keeping its terms', () => {
+    sim.createPolicy(POLICY, TERMS.from, TERMS.until, TERMS.category, TERMS.cap);
+    const l = sim.deactivatePolicy(POLICY);
+    expect(l.policies.lookup(POLICY)).toEqual({
+      active: false,
+      validFromEpoch: 100n,
+      validUntilEpoch: 200n,
+      coveredCategory: 4n,
+      maxAmount: 500_000n,
+    });
+  });
+
+  it('rejects deactivation from a caller without the admin secret', () => {
+    sim.createPolicy(POLICY, TERMS.from, TERMS.until, TERMS.category, TERMS.cap);
+    sim.as({ adminSecret: bytes32('attacker') });
+    expectRejected(sim, () => sim.deactivatePolicy(POLICY), 'VeilClaim: not admin');
+  });
+
+  it('rejects a claim against an inactive policy', () => {
+    const deployed = setup();
+    deployed.as({ adminSecret: ADMIN }).deactivatePolicy(POLICY);
+    expectRejected(deployed, () => submit(deployed, signedClaim()), 'VeilClaim: policy inactive');
+  });
+
   it('rejects a claim against a policy that does not exist', () => {
     const deployed = setup();
     expectRejected(deployed, () => submit(deployed, signedClaim(), bytes32('no-such-policy')), 'VeilClaim: unknown policy');

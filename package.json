@@ -12,11 +12,12 @@
   "scripts": {
     "compact": "bun run --filter @veilclaim/contract compact",
     "compact:fast": "bun run --filter @veilclaim/contract compact:fast",
-    "test": "bun run --filter @veilclaim/contract test",
+    "test": "bun run --filter '*' test",
     "typecheck": "bun run --filter '*' typecheck",
     "dev": "bun run --filter @veilclaim/ui dev",
     "build": "bun run --filter @veilclaim/ui build",
-    "proof-server": "docker compose -f proof-server/docker-compose.yml up"
+    "proof-server": "docker compose -f proof-server/docker-compose.yml up",
+    "demo:issue": "bun run --filter @veilclaim/api demo:issue"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

@@ -1,8 +1,9 @@
 // Dev-only persistence for the admin setup flow. Removed before submission (roadmap g5).
 import { fromHex, toHex } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
+import type { TxReceipt } from '@veilclaim/api';
 
 const ADMIN_SECRET_KEY = 'veilclaim:dev:adminSecret';
-const CONTRACT_ADDRESS_KEY = 'veilclaim:dev:contractAddress';
+const RECORD_KEY = 'veilclaim:dev:deploymentRecord';
 
 const read = (key: string): string | null => {
   try {
@@ -28,7 +29,20 @@ export const getOrCreateAdminSecret = (): Uint8Array => {
   return secret;
 };
 
-export const getSavedContractAddress = (): string =>
-  read(CONTRACT_ADDRESS_KEY) ?? import.meta.env.VITE_CONTRACT_ADDRESS ?? '';
+/** Public evidence for deployments/preprod.json. Contains no private inputs. */
+export interface DeploymentRecord {
+  network: string;
+  contractAddress: string;
+  transactions: Array<{ action: string; at: string } & TxReceipt>;
+}
 
-export const saveContractAddress = (address: string): void => write(CONTRACT_ADDRESS_KEY, address);
+export const loadRecord = (): DeploymentRecord | null => {
+  const stored = read(RECORD_KEY);
+  try {
+    return stored ? (JSON.parse(stored) as DeploymentRecord) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const saveRecord = (record: DeploymentRecord): void => write(RECORD_KEY, JSON.stringify(record, null, 2));

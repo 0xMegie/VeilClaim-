@@ -1,45 +1,42 @@
-// Dev-only admin panel for the Phase 1 toolchain gate: connect Lace, deploy, create the demo policy.
+// Dev-only admin panel: connect Lace, deploy, create the demo policy, approve Med-01, export deployment evidence.
 // Removed before submission (roadmap g5).
 import { toHex } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
-import { HEALTH_COVER_A, VeilClaimAPI, type VeilClaimProviders, type VeilClaimPublicState } from '@veilclaim/api';
-import { emptyPrivateState } from '@veilclaim/contract';
-import { useEffect, useState } from 'react';
-import { NETWORK_ID, initializeProviders } from '../midnight/providers';
-import { getOrCreateAdminSecret, getSavedContractAddress, saveContractAddress } from './dev-storage';
+import { HEALTH_COVER_A, MED_01, type TxReceipt } from '@veilclaim/api';
+import { useState } from 'react';
+import { DEMO_PROVIDER_KEY } from '../demo/demo';
+import { NETWORK_ID, isContractAddress } from '../midnight/config';
+import { errorText, useVeilClaim } from '../midnight/VeilClaimContext';
+import { type DeploymentRecord, getOrCreateAdminSecret, loadRecord, saveRecord } from './dev-storage';
 
-type LogEntry = { at: string; text: string; tone: 'info' | 'ok' | 'error' };
-
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+type LogEntry = { id: number; at: string; text: string; tone: 'info' | 'ok' | 'error' };
 
 export function DevPanel() {
-  const [providers, setProviders] = useState<VeilClaimProviders | null>(null);
-  const [api, setApi] = useState<VeilClaimAPI | null>(null);
-  const [address, setAddress] = useState(getSavedContractAddress);
-  const [ledger, setLedger] = useState<VeilClaimPublicState | null>(null);
+  const { contractAddress, selectContractAddress, publicState, walletStatus, walletError, connectWallet, deploy, getApi } =
+    useVeilClaim();
+  const [addressInput, setAddressInput] = useState(contractAddress);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const [record, setRecord] = useState<DeploymentRecord | null>(loadRecord);
+  const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (!api) return;
-    const sub = api.state$.subscribe({
-      next: setLedger,
-      error: (err) => append(`Ledger subscription failed: ${errorText(err)}`, 'error'),
-    });
-    return () => sub.unsubscribe();
-  }, [api]);
+  const append = (text: string, tone: LogEntry['tone'] = 'info') =>
+    setLog((entries) => [{ id: Date.now() + Math.random(), at: new Date().toLocaleTimeString('en-GB'), text, tone }, ...entries]);
 
-  function append(text: string, tone: LogEntry['tone'] = 'info') {
-    const at = new Date().toLocaleTimeString('en-GB');
-    setLog((entries) => [{ at, text, tone }, ...entries]);
-  }
+  const remember = (action: string, address: string, receipt: TxReceipt) => {
+    const base = record?.contractAddress === address ? record : { network: NETWORK_ID, contractAddress: address, transactions: [] };
+    const next = { ...base, transactions: [...base.transactions, { action, at: new Date().toISOString(), ...receipt }] };
+    saveRecord(next);
+    setRecord(next);
+  };
 
-  async function run(label: string, action: () => Promise<void>) {
+  async function run(label: string, action: () => Promise<string | void>) {
     setBusy(label);
     append(`${label}…`);
     const started = performance.now();
     try {
-      await action();
-      append(`${label} done in ${((performance.now() - started) / 1000).toFixed(1)} s`, 'ok');
+      const detail = await action();
+      const seconds = ((performance.now() - started) / 1000).toFixed(1);
+      append(`${label}: done in ${seconds} s${detail ? ` · ${detail}` : ''}`, 'ok');
     } catch (err) {
       append(`${label} failed: ${errorText(err)}`, 'error');
     } finally {
@@ -47,96 +44,111 @@ export function DevPanel() {
     }
   }
 
-  const adminPrivateState = () => ({ ...emptyPrivateState(), adminSecret: getOrCreateAdminSecret() });
+  const describe = (r: TxReceipt) => `tx ${r.txId} · block ${r.blockHeight}`;
 
-  const connect = () =>
-    run('Connect Lace', async () => {
-      setProviders(await initializeProviders());
-    });
-
-  const deploy = () =>
+  const onDeploy = () =>
     run('Deploy contract', async () => {
-      if (!providers) throw new Error('Connect Lace first.');
-      const deployed = await VeilClaimAPI.deploy(providers, getOrCreateAdminSecret(), adminPrivateState());
-      saveContractAddress(deployed.contractAddress);
-      setAddress(deployed.contractAddress);
-      setApi(deployed);
-      const tx = deployed.deployedContract.deployTxData.public;
-      append(`Deployed at ${deployed.contractAddress} · tx ${tx.txId} · block ${tx.blockHeight}`, 'ok');
+      const api = await deploy(getOrCreateAdminSecret());
+      setAddressInput(api.contractAddress);
+      remember('deploy', api.contractAddress, api.deployReceipt);
+      return `${api.contractAddress} · ${describe(api.deployReceipt)}`;
     });
 
-  const join = () =>
-    run('Join contract', async () => {
-      if (!providers) throw new Error('Connect Lace first.');
-      if (!/^[0-9a-fA-F]{64}$/.test(address)) throw new Error('Contract address must be 64 hex characters.');
-      const joined = await VeilClaimAPI.join(providers, address, adminPrivateState());
-      saveContractAddress(joined.contractAddress);
-      setApi(joined);
-    });
-
-  const createPolicy = () =>
+  const onCreatePolicy = () =>
     run(`Create “${HEALTH_COVER_A.name}”`, async () => {
-      if (!api) throw new Error('Deploy or join a contract first.');
-      const p = HEALTH_COVER_A;
-      const result = await api.createPolicy(p.policyId, p.validFromEpoch, p.validUntilEpoch, p.coveredCategory, p.maxAmount);
-      append(`Policy created · tx ${result.public.txId} · block ${result.public.blockHeight}`, 'ok');
+      const api = await getApi();
+      const receipt = await api.createPolicy(getOrCreateAdminSecret(), HEALTH_COVER_A);
+      remember('createPolicy', api.contractAddress, receipt);
+      return describe(receipt);
     });
+
+  const onApproveProvider = () =>
+    run(`Approve ${MED_01.name}`, async () => {
+      const api = await getApi();
+      const receipt = await api.setProviderStatus(getOrCreateAdminSecret(), MED_01.providerId, DEMO_PROVIDER_KEY, true);
+      remember('setProviderStatus', api.contractAddress, receipt);
+      return describe(receipt);
+    });
+
+  const onCopyRecord = async () => {
+    if (!record) return;
+    await navigator.clipboard.writeText(JSON.stringify(record, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const policyExists = publicState?.policies.some((p) => p.policyId === toHex(HEALTH_COVER_A.policyId)) ?? false;
+  const providerApproved = publicState?.providers.some((p) => p.providerId === toHex(MED_01.providerId) && p.approved) ?? false;
+  const hasContract = isContractAddress(contractAddress);
 
   return (
     <section className="card dev">
       <header>
         <h2>Dev setup</h2>
-        <p className="hint">Local only. Deploys to {NETWORK_ID} through Lace.</p>
+        <p className="hint">Local only. Transactions go to {NETWORK_ID} through Lace.</p>
       </header>
 
-      <div className="dev-actions">
-        <button onClick={connect} disabled={!!busy || !!providers}>
-          {providers ? 'Lace connected' : 'Connect Lace'}
-        </button>
-        <button onClick={deploy} disabled={!!busy || !providers}>
-          Deploy new contract
-        </button>
-      </div>
+      <ol className="dev-steps">
+        <li>
+          <button onClick={() => run('Connect Lace', async () => void (await connectWallet()))} disabled={!!busy || walletStatus === 'connected'}>
+            {walletStatus === 'connected' ? 'Lace connected' : 'Connect Lace'}
+          </button>
+          {walletError && <span className="dev-error">{walletError}</span>}
+        </li>
+        <li>
+          <button onClick={onDeploy} disabled={!!busy || walletStatus !== 'connected'}>
+            Deploy new contract
+          </button>
+          <span className="hint">or use an existing one:</span>
+          <div className="dev-join">
+            <input
+              id="dev-address"
+              aria-label="Contract address"
+              value={addressInput}
+              onChange={(e) => setAddressInput(e.target.value.trim())}
+              placeholder="64 hex characters"
+              spellCheck={false}
+            />
+            <button onClick={() => selectContractAddress(addressInput)} disabled={!isContractAddress(addressInput) || addressInput === contractAddress}>
+              Use address
+            </button>
+          </div>
+        </li>
+        <li>
+          <button onClick={onCreatePolicy} disabled={!!busy || !hasContract || policyExists}>
+            {policyExists ? `“${HEALTH_COVER_A.name}” created` : `Create “${HEALTH_COVER_A.name}”`}
+          </button>
+        </li>
+        <li>
+          <button onClick={onApproveProvider} disabled={!!busy || !hasContract || providerApproved}>
+            {providerApproved ? `${MED_01.name} approved` : `Approve ${MED_01.name}`}
+          </button>
+        </li>
+      </ol>
 
-      <div className="dev-join">
-        <label htmlFor="dev-address">Contract address</label>
-        <input
-          id="dev-address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value.trim())}
-          placeholder="64 hex characters"
-          spellCheck={false}
-        />
-        <button onClick={join} disabled={!!busy || !providers || !address}>
-          Join
-        </button>
-      </div>
-
-      <div className="dev-actions">
-        <button onClick={createPolicy} disabled={!!busy || !api}>
-          Create “{HEALTH_COVER_A.name}” policy
-        </button>
-      </div>
-
-      {ledger && (
-        <dl className="dev-ledger">
-          <dt>Policies</dt>
-          <dd>{ledger.policies.length ? ledger.policies.map((p) => `${p.policyId.slice(0, 12)}… cap ${p.maxAmount}`).join(', ') : 'none'}</dd>
-          <dt>Providers</dt>
-          <dd>{ledger.providers.length}</dd>
-          <dt>Accepted claims</dt>
-          <dd>{ledger.acceptedClaimCount.toString()}</dd>
-        </dl>
+      {log.length > 0 && (
+        <ol className="dev-log" aria-live="polite">
+          {log.map((entry) => (
+            <li key={entry.id} className={`dev-log-${entry.tone}`}>
+              <time>{entry.at}</time> {entry.text}
+            </li>
+          ))}
+        </ol>
       )}
 
-      <ol className="dev-log" aria-live="polite" hidden={log.length === 0}>
-        {log.map((entry, i) => (
-          <li key={log.length - i} className={`dev-log-${entry.tone}`}>
-            <time>{entry.at}</time> {entry.text}
-          </li>
-        ))}
-      </ol>
-      <p className="hint">Admin secret fingerprint: {toHex(getOrCreateAdminSecret()).slice(0, 8)}… (stored in this browser)</p>
+      {record && (
+        <div className="dev-record">
+          <button type="button" onClick={onCopyRecord}>
+            {copied ? 'Copied' : 'Copy deployment record'}
+          </button>
+          <details>
+            <summary>Deployment record ({record.transactions.length} transactions)</summary>
+            <pre>{JSON.stringify(record, null, 2)}</pre>
+          </details>
+        </div>
+      )}
+
+      <p className="hint">Admin secret {toHex(getOrCreateAdminSecret()).slice(0, 8)}… is stored in this browser.</p>
     </section>
   );
 }

@@ -7,7 +7,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "demo:issue": "bun run scripts/issue-demo-claims.ts"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-js": "2.5.1",
@@ -16,5 +18,8 @@
     "@midnight-ntwrk/midnight-js-types": "4.1.1",
     "@veilclaim/contract": "*",
     "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24"
   }
 }

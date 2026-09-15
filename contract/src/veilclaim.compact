@@ -165,6 +165,20 @@ export circuit createPolicy(
   });
 }
 
+export circuit deactivatePolicy(policyId: Bytes<32>): [] {
+  assertAdmin();
+  const id = disclose(policyId);
+  assert(policies.member(id), "VeilClaim: unknown policy");
+  const policy = policies.lookup(id);
+  policies.insert(id, Policy {
+    active: false,
+    validFromEpoch: policy.validFromEpoch,
+    validUntilEpoch: policy.validUntilEpoch,
+    coveredCategory: policy.coveredCategory,
+    maxAmount: policy.maxAmount
+  });
+}
+
 export circuit setProviderStatus(
   providerId: Bytes<32>,
   attestationKey: JubjubPoint,

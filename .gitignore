@@ -1,6 +1,7 @@
 # Private build brief
 doc.md
-
+docs
+docs/
 node_modules/
 dist/
 *.tsbuildinfo
@@ -20,3 +21,6 @@ contract/src/managed/
 # Dev-time copies of circuit assets
 ui/public/keys/
 ui/public/zkir/
+
+# Demo provider signing key (bun run demo:issue)
+.provider-secret

@@ -1,6 +1,7 @@
 import {
   type CircuitContext,
   type JubjubPoint,
+  type ProofData,
   createCircuitContext,
   createConstructorContext,
   sampleContractAddress,
@@ -16,6 +17,8 @@ import { type VeilClaimPrivateState, emptyPrivateState, witnesses } from '../src
 export class VeilClaimSimulator {
   readonly contract = new Contract<VeilClaimPrivateState>(witnesses);
   context: CircuitContext<VeilClaimPrivateState>;
+  /** Proof inputs of the last successful call: what goes on-chain (public) versus what stays in the prover (private). */
+  lastProofData: ProofData | null = null;
 
   constructor(readonly adminSecret: Uint8Array) {
     const { currentPrivateState, currentContractState, currentZswapLocalState } = this.contract.initialState(
@@ -45,13 +48,20 @@ export class VeilClaimSimulator {
     return this.ledger;
   }
 
+  deactivatePolicy(policyId: Uint8Array): Ledger {
+    this.context = this.contract.impureCircuits.deactivatePolicy(this.context, policyId).context;
+    return this.ledger;
+  }
+
   setProviderStatus(providerId: Uint8Array, attestationKey: JubjubPoint, approved: boolean): Ledger {
     this.context = this.contract.impureCircuits.setProviderStatus(this.context, providerId, attestationKey, approved).context;
     return this.ledger;
   }
 
   submitClaim(policyId: Uint8Array): Ledger {
-    this.context = this.contract.impureCircuits.submitClaim(this.context, policyId).context;
+    const { context, proofData } = this.contract.impureCircuits.submitClaim(this.context, policyId);
+    this.context = context;
+    this.lastProofData = proofData;
     return this.ledger;
   }
 }
@@ -62,7 +72,16 @@ export const bytes32 = (label: string): Uint8Array => {
   return out;
 };
 
-const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString('hex');
+export const hex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+/** Flattens any runtime value (aligned values, transcripts, ledger snapshots) into one searchable hex string. */
+export const hexDump = (value: unknown): string => {
+  if (value instanceof Uint8Array) return hex(value);
+  if (typeof value === 'bigint') return value.toString(16);
+  if (Array.isArray(value)) return value.map(hexDump).join('|');
+  if (value && typeof value === 'object') return Object.values(value).map(hexDump).join('|');
+  return String(value);
+};
 
 /** A plain, comparable copy of the entire public ledger. */
 export const snapshot = (l: Ledger) => ({
