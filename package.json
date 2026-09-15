@@ -20,7 +20,8 @@
     "proof-server": "docker compose -f proof-server/docker-compose.yml up",
     "demo:issue": "bun run --filter @veilclaim/api demo:issue",
     "e2e:wallets": "bun run --filter @veilclaim/e2e wallets",
-    "e2e": "bun run --filter @veilclaim/e2e run"
+    "e2e": "bun run --filter @veilclaim/e2e run",
+    "e2e:verify": "bun run --filter @veilclaim/e2e verify"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

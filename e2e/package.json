@@ -6,7 +6,8 @@
   "scripts": {
     "wallets": "bun run src/wallets.ts",
     "run": "bun run src/run.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run src/verify.ts"
   },
   "dependencies": {
     "@midnight-ntwrk/ledger-v8": "8.1.0",

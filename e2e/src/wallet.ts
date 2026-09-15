@@ -2,6 +2,7 @@
  * Headless Midnight wallet for e2e runs: sync, DUST registration, and midnight-js providers.
  * Adapted from midnightntwrk/example-counter counter-cli/src/api.ts (Apache-2.0).
  */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { unshieldedToken } from '@midnight-ntwrk/ledger-v8';
@@ -57,11 +58,41 @@ export interface WalletContext {
   readonly unshieldedKeystore: UnshieldedKeystore;
 }
 
-export const startWallet = async (role: string, seedHex: string): Promise<WalletContext> => {
+const STATE_DIR = resolve(import.meta.dirname, '..', '.state');
+const walletStatePath = (role: string) => resolve(STATE_DIR, `wallet-${role}.json`);
+
+interface SavedWalletState {
+  shielded: string;
+  unshielded: string;
+  dust: string;
+}
+
+const loadSavedState = (role: string): SavedWalletState | null => {
+  try {
+    return existsSync(walletStatePath(role)) ? (JSON.parse(readFileSync(walletStatePath(role), 'utf8')) as SavedWalletState) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Saves sync progress so the next run resumes instead of rescanning the chain. Contains private wallet data: gitignored. */
+export const saveWalletState = async (ctx: WalletContext): Promise<void> => {
+  const state: SavedWalletState = {
+    shielded: String(await ctx.wallet.shielded.serializeState()),
+    unshielded: String(await ctx.wallet.unshielded.serializeState()),
+    dust: String(await ctx.wallet.dust.serializeState()),
+  };
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(walletStatePath(ctx.role), JSON.stringify(state), { mode: 0o600 });
+};
+
+export const startWallet = async (role: string, seedHex: string, log: (msg: string) => void): Promise<WalletContext> => {
   const keys = deriveKeys(seedHex);
   const shieldedSecretKeys = ledger.ZswapSecretKeys.fromSeed(keys[Roles.Zswap]);
   const dustSecretKey = ledger.DustSecretKey.fromSeed(keys[Roles.Dust]);
   const unshieldedKeystore = createKeystore(keys[Roles.NightExternal], NETWORK_ID);
+  const saved = loadSavedState(role);
+  log(saved ? 'resuming from saved sync state' : 'starting a fresh sync from genesis');
 
   const connection = { indexerHttpUrl: PREPROD.walletIndexer, indexerWsUrl: PREPROD.walletIndexerWS };
   const wallet = await WalletFacade.init({
@@ -73,12 +104,47 @@ export const startWallet = async (role: string, seedHex: string): Promise<Wallet
       txHistoryStorage: new InMemoryTransactionHistoryStorage(),
       costParameters: { additionalFeeOverhead: 300_000_000_000_000n, feeBlocksMargin: 5 },
     },
-    shielded: (cfg) => ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
-    unshielded: (cfg) => UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore)),
-    dust: (cfg) => DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
+    shielded: (cfg) =>
+      saved ? ShieldedWallet(cfg).restore(saved.shielded as never) : ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
+    unshielded: (cfg) =>
+      saved
+        ? UnshieldedWallet(cfg).restore(saved.unshielded as never)
+        : UnshieldedWallet(cfg).startWithPublicKey(PublicKey.fromKeyStore(unshieldedKeystore)),
+    dust: (cfg) =>
+      saved
+        ? DustWallet(cfg).restore(saved.dust)
+        : DustWallet(cfg).startWithSecretKey(dustSecretKey, ledger.LedgerParameters.initialParameters().dust),
   });
   await wallet.start(shieldedSecretKeys, dustSecretKey);
   return { role, wallet, shieldedSecretKeys, dustSecretKey, unshieldedKeystore };
+};
+
+// Sub-wallets expose slightly different progress types. The event-based sync reports its target as
+// highestRelevantWalletIndex and leaves highestIndex at 0, so take whichever is set.
+const pct = (progress: unknown) => {
+  const p = progress as { appliedIndex?: bigint; highestIndex?: bigint; highestRelevantWalletIndex?: bigint };
+  const target = [p.highestRelevantWalletIndex ?? 0n, p.highestIndex ?? 0n].reduce((a, b) => (a > b ? a : b));
+  if (p.appliedIndex === undefined || target === 0n) return '…';
+  return `${((Number(p.appliedIndex) / Number(target)) * 100).toFixed(1)}% (${p.appliedIndex}/${target})`;
+};
+
+/** Waits for full sync, logging progress every 30 s and saving resumable state every minute. */
+export const syncWallet = async (ctx: WalletContext, log: (msg: string) => void) => {
+  const progress = ctx.wallet
+    .state()
+    .pipe(Rx.throttleTime(30_000))
+    .subscribe((s) => {
+      log(`sync shielded ${pct(s.shielded.progress)} · unshielded ${pct(s.unshielded.progress)} · dust ${pct(s.dust.progress)}`);
+    });
+  const saver = setInterval(() => void saveWalletState(ctx).catch(() => undefined), 60_000);
+  try {
+    const state = await syncedState(ctx);
+    await saveWalletState(ctx);
+    return state;
+  } finally {
+    progress.unsubscribe();
+    clearInterval(saver);
+  }
 };
 
 export const syncedState = (ctx: WalletContext) =>

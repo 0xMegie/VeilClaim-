@@ -214,6 +214,19 @@ cd e2e && bun run src/run.ts          # deploy (or reuse), set up the policy, th
 
 The scenario: alice submits a valid claim, replays it, bob submits an over-cap claim, a valid claim, and alice's claim with his own secret. Public results (contract address, transaction ids, blocks, proof times) are written to `deployments/preprod.json`.
 
+A fresh wallet has to sync the whole chain before it can pay fees, about 1.5 GB of DUST events. Sync progress is saved in `e2e/.state/` and resumed, and Ctrl+C saves it too. On a slow connection, `--one-wallet` lets the admin wallet pay for every transaction, so only one wallet syncs. Claim rights are bound to holder secrets, not wallets, so the contract checks are the same.
+
+### Verify a deployment
+
+Anyone can check the recorded deployment against Midnight's public indexer, with no wallet or keys:
+
+```bash
+bun run e2e:verify               # checks deployments/preprod.json
+bun run e2e:verify <address>     # prints the public ledger of any VeilClaim contract
+```
+
+It reads the contract's ledger (policies, providers, receipts, nullifiers, count), checks that every receipt is paired with a consumed nullifier and that the count matches, and looks up each recorded transaction by hash to confirm it finalized with status `SUCCESS` in the recorded block.
+
 ### Scripts
 
 | Command | What it does |
@@ -227,6 +240,7 @@ The scenario: alice submits a valid claim, replays it, bob submits an over-cap c
 | `bun run proof-server` | Start the local proof server |
 | `bun run demo:issue` | Sign sample claims as the demo provider |
 | `bun run e2e:wallets` | Create and list the Preprod test wallets |
+| `bun run e2e:verify` | Check the recorded deployment against the public indexer |
 
 ### Toolchain versions
 
