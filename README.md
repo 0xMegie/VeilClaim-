@@ -152,6 +152,7 @@ VeilClaim/
 ├── api/                         TypeScript API: deploy, join, circuit calls, public state, claim codec
 │   └── scripts/issue-demo-claims.ts   the demo provider: signs sample claims
 ├── ui/                          React + Vite app: Policy and Claim screens, Lace wallet wiring
+├── e2e/                         headless Preprod runner with three wallets
 └── proof-server/                Docker Compose for the local proof server
 ```
 
@@ -201,6 +202,18 @@ bun run demo:issue   # creates .provider-secret if missing and rewrites ui/src/d
 
 Approve the new provider key from the Dev tab afterwards.
 
+### End-to-end run on Preprod
+
+A headless test runner deploys and exercises the contract with three wallets (admin, alice, bob) through the local proof server:
+
+```bash
+bun run e2e:wallets              # create test wallets (seeds in gitignored e2e/.wallets.json) and print faucet addresses
+cd e2e && bun run src/run.ts status   # sync, show balances, register tNIGHT for DUST
+cd e2e && bun run src/run.ts          # deploy (or reuse), set up the policy, then run the claim scenario
+```
+
+The scenario: alice submits a valid claim, replays it, bob submits an over-cap claim, a valid claim, and alice's claim with his own secret. Public results (contract address, transaction ids, blocks, proof times) are written to `deployments/preprod.json`.
+
 ### Scripts
 
 | Command | What it does |
@@ -213,6 +226,7 @@ Approve the new provider key from the Dev tab afterwards.
 | `bun run build` | Production build of the app |
 | `bun run proof-server` | Start the local proof server |
 | `bun run demo:issue` | Sign sample claims as the demo provider |
+| `bun run e2e:wallets` | Create and list the Preprod test wallets |
 
 ### Toolchain versions
 

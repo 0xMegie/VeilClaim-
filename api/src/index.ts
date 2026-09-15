@@ -25,6 +25,7 @@ export * from './claim-codec.js';
 export * from './common-types.js';
 export * from './demo.js';
 export * from './encoding.js';
+export * from './in-memory-private-state-provider.js';
 
 export const toPublicState = (l: VeilClaim.Ledger): VeilClaimPublicState => ({
   policies: [...l.policies].map(([id, policy]) => ({ policyId: toHex(id), ...policy })),

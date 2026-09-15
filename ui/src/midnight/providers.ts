@@ -22,13 +22,13 @@ import {
   type VeilClaimPrivateStateId,
   type VeilClaimProviders,
   type VeilClaimPublicState,
+  inMemoryPrivateStateProvider,
   toPublicState,
 } from '@veilclaim/api';
 import { VeilClaim, type VeilClaimPrivateState } from '@veilclaim/contract';
 import { type Observable, map } from 'rxjs';
 import semver from 'semver';
 import { INDEXER_URL, INDEXER_WS_URL, NETWORK_ID } from './config';
-import { inMemoryPrivateStateProvider } from './in-memory-private-state-provider';
 
 const COMPATIBLE_CONNECTOR_API_VERSION = '4.x';
 
@@ -49,8 +49,11 @@ const emitStage = (stage: TxStage) => stageListeners.forEach((listener) => liste
 
 // Pass the browser WebSocket explicitly: isomorphic-ws's browser build has no named export,
 // so the provider's default would be undefined and ledger subscriptions would never connect.
+// The parameter is typed as Node's `ws` class; the browser implementation is what runs here.
+const BrowserWebSocket = WebSocket as unknown as NonNullable<Parameters<typeof indexerPublicDataProvider>[2]>;
+
 export const publicState$ = (contractAddress: string): Observable<VeilClaimPublicState> =>
-  indexerPublicDataProvider(INDEXER_URL, INDEXER_WS_URL, WebSocket)
+  indexerPublicDataProvider(INDEXER_URL, INDEXER_WS_URL, BrowserWebSocket)
     .contractStateObservable(contractAddress, { type: 'latest' })
     .pipe(map((state) => toPublicState(VeilClaim.ledger(state.data))));
 
@@ -92,7 +95,7 @@ export const initializeProviders = async (): Promise<VeilClaimProviders> => {
         return proofProvider.proveTx(tx, proveTxConfig);
       },
     },
-    publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri, WebSocket),
+    publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri, BrowserWebSocket),
     walletProvider: {
       getCoinPublicKey: () => addresses.shieldedCoinPublicKey,
       getEncryptionPublicKey: () => addresses.shieldedEncryptionPublicKey,

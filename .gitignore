@@ -15,8 +15,8 @@ reports/
 .idea/
 midnight-level-db
 
-# Compact compiler output (regenerate with `npm run compact`)
-contract/src/managed/
+# Compact compiler output is committed: the proving keys must match the verifier keys of the deployed contract.
+# Recompiling can produce different keys, so do not regenerate it for an existing deployment.
 
 # Dev-time copies of circuit assets
 ui/public/keys/
@@ -24,3 +24,7 @@ ui/public/zkir/
 
 # Demo provider signing key (bun run demo:issue)
 .provider-secret
+
+# E2E test wallet seeds (Preprod only)
+e2e/.wallets.json
+e2e/.state/

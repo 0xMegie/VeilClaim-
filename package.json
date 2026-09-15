@@ -7,7 +7,8 @@
   "workspaces": [
     "contract",
     "api",
-    "ui"
+    "ui",
+    "e2e"
   ],
   "scripts": {
     "compact": "bun run --filter @veilclaim/contract compact",
@@ -17,14 +18,15 @@
     "dev": "bun run --filter @veilclaim/ui dev",
     "build": "bun run --filter @veilclaim/ui build",
     "proof-server": "docker compose -f proof-server/docker-compose.yml up",
-    "demo:issue": "bun run --filter @veilclaim/api demo:issue"
+    "demo:issue": "bun run --filter @veilclaim/api demo:issue",
+    "e2e:wallets": "bun run --filter @veilclaim/e2e wallets",
+    "e2e": "bun run --filter @veilclaim/e2e run"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
   },
   "overrides": {
-    "@midnight-ntwrk/ledger-v8": "8.1.0",
-    "smoldot": "npm:@aspect-build/empty@0.0.0"
+    "@midnight-ntwrk/ledger-v8": "8.1.0"
   }
 }
