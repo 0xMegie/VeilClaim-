@@ -32,6 +32,19 @@ export function PolicyView() {
   return (
     <>
       <section className="card">
+        <h2>Private insurance claims, publicly verified</h2>
+        <p>
+          Everything below is live public state from the Midnight Preprod ledger, read straight from the indexer with no
+          wallet: the policy rules, the approved provider, and one receipt and nullifier per accepted claim. The amounts,
+          service dates and claimant identities behind those claims were never published.
+        </p>
+        <p className="hint">
+          Submitting a claim yourself needs the Lace wallet on Preprod and a proof server on your machine, because private
+          claim data is only ever proven locally.
+        </p>
+      </section>
+
+      <section className="card">
         <h2>{HEALTH_COVER_A.name}</h2>
         {policy ? (
           <dl className="facts">
