@@ -11,7 +11,7 @@ export function PolicyView() {
     return (
       <section className="card">
         <h2>No contract configured</h2>
-        <p className="hint">Deploy one from the Dev tab, or set VITE_CONTRACT_ADDRESS in ui/.env.</p>
+        <p className="hint">No deployment is recorded in deployments/preprod.json yet. Deploy one from the Dev tab, or set VITE_CONTRACT_ADDRESS.</p>
       </section>
     );
   }
