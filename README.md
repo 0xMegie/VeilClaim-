@@ -10,6 +10,10 @@ private provider-attested claim  →  Midnight ZK proof  →  replay-safe public
 
 Built on [Midnight](https://midnight.network/) for the Midnight Buildathon, Wave 1.
 
+**Live app: <https://veil-claim-ui.vercel.app/>** The Policy screen reads the public Preprod ledger
+with no wallet, so anyone can check the contract's state. Submitting a claim additionally needs the
+Lace wallet on Preprod and a proof server, because private claim data is only ever proven locally.
+
 > **Status:** contract, proof path, 55 tests and the claimant app are complete. Public Preprod deployment and the demo video are pending. See [Status](#status).
 
 ---
@@ -256,7 +260,12 @@ These move together. Upgrade them as a set.
 
 ## Deployment
 
-Pending. The Preprod contract address and transaction evidence will be recorded in `deployments/preprod.json`.
+The app is live at <https://veil-claim-ui.vercel.app/> and reads its contract address from the
+committed `deployments/preprod.json`, so a fresh clone or a static host needs no configuration.
+
+The Preprod contract address and transaction evidence are recorded in `deployments/preprod.json`
+once the end-to-end run completes. Check any deployment against the public indexer with
+`bun run e2e:verify`.
 
 ## Status
 
