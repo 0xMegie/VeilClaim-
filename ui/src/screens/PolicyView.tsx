@@ -54,7 +54,7 @@ export function PolicyView() {
             <dd>{formatAmount(policy.maxAmount)}</dd>
             <dt>Policy period</dt>
             <dd>
-              {epochToDate(policy.validFromEpoch)} – {epochToDate(policy.validUntilEpoch)}
+              {epochToDate(policy.validFromEpoch)} to {epochToDate(policy.validUntilEpoch)}
             </dd>
             <dt>Status</dt>
             <dd>{policy.active ? 'Active' : 'Inactive'}</dd>
